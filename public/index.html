@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<link rel='stylesheet' href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+	<link rel='stylesheet' type='text/css' href='style.css'>
+    <script src='https://ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.min.js'></script>
+    <script src='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js' integrity='sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa' crossorigin='anonymous'></script>
+	
+    <script type='text/javascript'>
+        function getUrlParams() {
+            var urlParams = {};
+            var match,
+                pl = /\+/g,  // Regex for replacing addition symbol with a space
+                search = /([^&=]+)=?([^&]*)/g,
+                decode = function (s) { return decodeURIComponent(s.replace(pl, ' ')); },
+                query = window.location.hash.substring(1);
+            while (match = search.exec(query)) {
+                urlParams[decode(match[1])] = decode(match[2]);
+            }
+            return urlParams;
+        } 
+
+        function Auth(){
+            var params = getUrlParams();
+            var access_token = params.access_token,
+                error = params.error;
+            if (error) {
+                alert('There was an error in authentication.');
+            }
+            else {
+                if (access_token) {
+                    $('#oauth').html(access_token);
+                }
+                $.ajax({
+                    url: 'https://api.spotify.com/v1/me',
+                    headers: {
+                        'Authorization': 'Bearer ' + access_token
+                    },
+                    success: function(msg) {
+                        $('#output').html(msg.id);
+						var userID = msg.id;
+						
+						// AJAX call to get dates previously stored under the user in the tracks table
+						$.ajax({
+							type: "GET",
+							url: 'http://localhost:8080/dbDatesTr',
+							contentType: "application/json; charset=utf-8",
+							data: {userid : userID},
+							dataType: "html",
+									
+							success: function(msg) 
+							{
+								$('#showTrSelectBox').html(msg); // Display the drop-box of dates stored in the tracks table
+							},
+						});	
+
+						// AJAX call to get dates previously stored under the user in the artists table
+						$.ajax({
+							type: "GET",
+							url: 'http://localhost:8080/dbDatesAr',
+							contentType: "application/json; charset=utf-8",
+							data: {userid : userID},
+							dataType: "html",
+									
+							success: function(msg) 
+							{
+								$('#showArSelectBox').html(msg); // Display the drop-box of dates stored in the artists table
+							},
+						});	
+						
+                    }
+                });
+            }
+        }
+
+        Auth();
+
+        function getTopTracks() {
+            var limit = prompt('Please enter the amount of tracks to display (limit 20)');
+            if (limit == '' || limit > 20) {
+                alert('Invalid input!');
+            }
+            else {
+                var URL = 'https://api.spotify.com/v1/me/top/tracks?limit=' + limit;
+                var params = getUrlParams();
+                var access_token = params.access_token,
+                    error = params.error;
+                $.ajax({
+                    type: 'GET',
+                    url: URL,
+                    headers: {
+                        'Authorization': 'Bearer ' + access_token
+                    },
+                    success: function(msg) {
+						var today = new Date();
+						var day = today.getDate();
+						var mon = today.getMonth() + 1; //January starts at 0
+						var year = today.getFullYear();
+						if (day < 10) {
+							day = '0' + day;
+						} 
+						if (mon < 10) {
+							mon = '0' + mon;
+						} 
+						today = year + '-' + mon + '-' + day;
+					
+                        var out = '<h3>Your Top ' + limit + ' Tracks</h3><table><th>Rank</th><th>Track Name</th><th>Album Name</th><th>Artist\'s Name</th><th>Popularity</th><th>Artist Cover</th><th>Date</th><th>30s Snippet</th></tr>';
+                        var artist_id = '';
+						
+						// Arrays to store the information obtained from the Spotify API. Using the array when posting the information to the database will speed up the time those POST AJAX take
+						var tNameArr = [];
+						var alNameArr = [];
+						var arNameArr = [];
+						var popArr = [];
+						var alUrlArr = [];
+						
+						// Displays the table containing the user's top tracks along with corresponding information
+                        for (var i = 0; i < limit; i++) {
+							out += '<tr><td>' + (i+1) + '</td><td>' + msg.items[i].name + '</td>';
+							out += '<td>' + msg.items[i].album.name + '</td>';
+							out += '<td>' + msg.items[i].artists[0].name + '</td>';
+							out += '<td>' + msg.items[i].popularity + '</td>';
+							out += '<td><img src=' + msg.items[i].album.images[0].url + ' alt=\'Album Cover\' height=\'75\' width=\'75\'></td>';
+							out += '<td>' + today + '</td>';
+							var previewURL = msg.items[i].preview_url;
+							//out += '<td>' + previewURL + '</td>';
+							out += '<td><input type="button" onclick="playSnippet('+ '\'' + previewURL + '\'' +')" value="Play Snippet"/></td>';
+							out += '</tr>';
+							
+							// Adding the information for each iteration into the array
+							tNameArr.push(msg.items[i].name);
+							alNameArr.push(msg.items[i].album.name);
+							arNameArr.push(msg.items[i].artists[0].name);
+							popArr.push(msg.items[i].popularity);
+							alUrlArr.push(msg.items[i].album.images[0].url);
+                        }
+						
+						// Posting the tracks information into the database
+						// First AJAX call will be to store the information contained in the html table into the database
+						var params = getUrlParams();
+						var access_token = params.access_token,
+							error = params.error;
+							
+						$.ajax({ // Gets the userId
+							url: 'https://api.spotify.com/v1/me',
+							headers: {
+								'Authorization': 'Bearer ' + access_token
+							},
+							success: function(msg) {
+								// AJAX call that posts the information stored in the table into the database
+								$.ajax({ 
+									type: 'POST',
+									url: 'http://localhost:8080/insertTracksDb',
+									data: {
+										// Data includes the fields stored in the database
+										id : msg.id,
+										tName: tNameArr,
+										alName: alNameArr, 
+										arName: arNameArr, 
+										pop: popArr, 
+										alUrl: alUrlArr, 
+										date: today,
+										size: limit
+									}
+								});
+						
+							}
+						});
+					
+						out += '<table>';
+
+						// Hide these buttons because there is no use for them for now
+                        $('#table').html(out);
+                        $('#artists').show();
+                        $('#output').hide();
+                        $('#top-tracks').hide();
+                        $('#top-albums').hide();
+                    }
+                });
+            }
+        }
+
+		
+		// Gets the user's top artists. Number of artists depends on the inputted number
+        function getTopArtists() {
+            var limit = prompt('Please enter the amount of artists to display (limit 20)');
+            if (limit == '' || limit > 20) { // Alert the user when the inputted length is invalid
+                alert('Invalid input!');
+            }
+            else { // Otherwise, the length is valid
+                var URL = 'https://api.spotify.com/v1/me/top/artists?limit=' + limit;
+                var params = getUrlParams();
+                var access_token = params.access_token,
+                    error = params.error;
+                $.ajax({
+                    type: 'GET',
+                    url: URL,
+                    headers: {
+                        'Authorization': 'Bearer ' + access_token
+                    },
+                    success: function(msg) {
+						var out = '<h3>Your Top ' + limit + ' Artists</h3><table><th>Rank</th><th>Artist\'s Name</th><th>Popularity</th><th>Artist\'s Image</th><th>Date</th></tr><form=\'artistForm\'>';
+                        var artist_id = '';
+						
+						var today = new Date();
+						var day = today.getDate();
+						var mon = today.getMonth()+1; //Starts at 0
+						var year = today.getFullYear();
+						if(day < 10) {
+								day = '0' + day;
+							} 
+						if(mon < 10) {
+							mon = '0' + mon;
+						} 
+						today = year + '-' + mon + '-' + day;
+
+						// Arrays to store the information obtained from the Spotify API. Using the array when posting the information to the database will speed up the time those POST AJAX take						
+						var arNameArr = [];
+						var popArr = [];
+						var arUrlArr = [];
+						
+						// Displays the table containing the user's top artists along with corresponding information
+                        for (var i = 0; i < limit; i++) {
+                            artist_id += msg.items[i].id + ' ';
+							out += '<tr><td>' + (i + 1) + '</td>';
+                            out += "<td><input type='radio' name='artistChoice' value='" + i + "'></form>" + msg.items[i].name + '</td>'; 
+							out += '<td>' + msg.items[i].popularity + '</td>';
+							out += '<td><img src=' + msg.items[i].images[0].url + ' alt=\'Artist Image\' height=\'75\' width=\'75\'></td>';
+							
+							out += '<td>' + today + '</td>';
+							out += '</tr>';
+
+							// Adding the information for each iteration into the array							
+							arNameArr.push(msg.items[i].name);
+							popArr.push(msg.items[i].popularity);
+							arUrlArr.push(msg.items[i].images[0].url);
+                        }
+			
+						//Putting the artists data into the database
+						// AJAX call to store the information contained in the table into the database
+						var params = getUrlParams();
+						var access_token = params.access_token,
+							refresh_token = params.refresh_token,
+							error = params.error;
+						
+						$.ajax({ // AJAX call to get the userId
+							url: 'https://api.spotify.com/v1/me',
+							headers: {
+								'Authorization': 'Bearer ' + access_token
+							},
+							success: function(msg) { // AJAX call that posts the information into the database
+								$.ajax({
+									type: 'POST',
+									url: 'http://localhost:8080/insertArtistsDb',
+									data: {
+										id : msg.id,
+										arName: arNameArr, 
+										pop: popArr, 
+										arUrl: arUrlArr, 
+										date: today,
+										size: limit
+									}
+								});
+						
+							}
+						});
+						
+						out += '</form>';
+                        $('#artistId').html(artist_id).hide();
+                        $('#table').html(out);
+
+                        // hide and show buttons
+                        $('#output').hide();
+                        $('#artists').hide();
+                        $('#top-tracks').show();
+                        $('#top-albums').show();
+                    }
+                });
+            }
+        }
+		
+		
+		// Gets the Artist's tracks based on the radio button that is clicked
+        function getArtistTracks() {
+            var artist_id = $('#artistId').html();
+            var choice = $("input[name='artistChoice']:checked").val();
+            var id_array = artist_id.split(' ');
+
+            var URL = 'https://api.spotify.com/v1/artists/' + encodeURI(id_array[parseInt(choice)]) + '/top-tracks?country=US';
+            var params = getUrlParams();
+            var access_token = params.access_token,
+                error = params.error;
+            $.ajax({
+                type: 'GET',
+                url: URL,
+                headers: {
+                    'Authorization': 'Bearer ' + access_token
+                },
+                success: function(msg) {
+					var out = '<table><th>Artists\' Top Tracks</th><tr>';
+                    for (var i = 0; i < msg.tracks.length; i++) {
+                        out += '<tr><td>' + (i+1) + '.</td><td>' + msg.tracks[i].name + '</td></tr>';
+                    }
+					out += '</table>';
+                    $('#output').html(out);
+                    $('#output').show();
+                }
+            });
+        }
+
+		
+		// Gets the Artist's albums based on the radio button that is clicked
+        function getArtistAlbums() {
+            var artist_id = $('#artistId').html();
+            var choice = $("input[name='artistChoice']:checked").val();
+            var id_array = artist_id.split(' ');
+            var URL = 'https://api.spotify.com/v1/artists/' + encodeURI(id_array[choice]) + '/albums?album_type=album&limit=10';
+            var params = getUrlParams();
+            var access_token = params.access_token,
+                error = params.error;
+				
+            $.ajax({
+                type: 'GET',
+                url: URL,
+                headers: {
+                    'Authorization': 'Bearer ' + access_token
+                },
+				
+                success: function(msg) {
+                    var out = '<table><th>Artists\' Albums</th><tr>';
+                    var arr = [];
+                    for(var i = 0; i < msg.items.length;i++){
+                        arr.push(msg.items[i].name);
+                    }
+                    arr = arr.filter(function (item, index, inputArray){
+                        return inputArray.indexOf(item) == index;
+                    });
+                    for (var i = 0; i < arr.length; i++) {
+                         out += '<tr><td>' + (i+1) + '.</td><td>' + arr[i] + '</td></tr>';
+                    }
+					out += '</table>';
+                    $('#output').html(out);
+                    $('#output').show();
+                }
+            });
+        }
+		
+		// Delete the artist's current tracks for today
+		function deleteTracks(){
+			var today = new Date();
+			var day = today.getDate();
+			var mon = today.getMonth() + 1; //January starts at 0
+			var year = today.getFullYear();
+			
+			if (day < 10) {
+				day = '0' + day;
+			} 
+			if (mon < 10) {
+				mon = '0' + mon;
+			} 
+			today = year + '-' + mon + '-' + day; // Formats the date to properly query the database
+										
+			var params = getUrlParams();
+				refresh_token = params.refresh_token,
+				error = params.error;
+			$.ajax({
+				url: 'https://api.spotify.com/v1/me',
+				headers: {
+					'Authorization': 'Bearer ' + access_token
+				},
+				success: function(msg) {
+					$.ajax({ // Do another ajax call to get the userId again to store into database
+						type: 'POST',
+						url: 'http://localhost:8080/deleteTracks',
+						data: {
+							id : msg.id,
+							date: today
+						}
+					});
+				}
+			});
+		}
+
+		// When the "Delete Today's Top Artists"
+		function deleteArtists(){
+			var today = new Date();
+			var day = today.getDate();
+			var mon = today.getMonth() + 1; // Starts at 0
+			var year = today.getFullYear();
+			
+			if (day < 10) {
+				day = '0' + day;
+			} 
+			if (mon < 10) {
+				mon = '0' + mon;
+			} 
+			
+			today = year + '-' + mon + '-' + day; // Formats the date to properly query the database
+										
+			var params = getUrlParams();
+			var access_token = params.access_token,
+				refresh_token = params.refresh_token,
+				error = params.error;
+			$.ajax({
+				url: 'https://api.spotify.com/v1/me',
+				headers: {
+					'Authorization': 'Bearer ' + access_token
+				},
+				success: function(msg) {
+					$.ajax({ // Do another ajax call to get the userId again to store into database
+						type: 'POST',
+						url: 'http://localhost:8080/deleteArtists',
+						data: {
+							id : msg.id,
+							date: today
+						}
+					});
+				}
+			});
+		}
+
+		// Function for when the 30 second song snippet button is clicked
+		function playSnippet(url){
+			var win = window.open(url,'_blank');
+			win.focus();
+		}
+
+		// Function that has an AJAX call to get the top tracks based on the date that the user chooses from the drop down box		
+		function getDateTracks(){
+			var dateChoice = document.getElementById("trDates").value;
+		
+			// Get the userid
+			var params = getUrlParams();
+            var access_token = params.access_token,
+                error = params.error;
+			
+			$.ajax({
+				url: 'https://api.spotify.com/v1/me',
+				headers: {
+					'Authorization': 'Bearer ' + access_token
+				},
+				success: function(msg) {
+					$('#output').html(msg.id);
+					var userID = msg.id;
+					
+					// Make another AJAX call to get the tracks
+					$.ajax({
+						type: "GET",
+						url: 'http://localhost:8080/getDateTracks',
+						contentType: "application/json; charset=utf-8",
+						data: {
+							userid : userID,
+							dateChoice : dateChoice
+						},
+						dataType: "html",
+								
+						success: function(msg) 
+						{
+							$('#table').html(msg); //Display the table in the div
+							$('#artists').show();
+							$('#top-tracks').hide();
+							$('#top-albums').hide();
+						},
+					});	
+				}
+			});
+		}
+		
+		// Function that has an AJAX call to get the top artists based on the date that the user chooses from the drop down box
+		function getDateArtists(){
+			var dateChoice = document.getElementById("arDates").value;
+			
+			// Get the userid
+			var params = getUrlParams();
+            var access_token = params.access_token,
+                error = params.error;
+			
+			$.ajax({
+				url: 'https://api.spotify.com/v1/me',
+				headers: {
+					'Authorization': 'Bearer ' + access_token
+				},
+				success: function(msg) {
+					$('#output').html(msg.id);
+					var userID = msg.id;
+					
+					// Make another AJAX call to get the artists
+					$.ajax({
+						type: "GET",
+						url: 'http://localhost:8080/getDateArtists',
+						contentType: "application/json; charset=utf-8",
+						data: {
+							userid : userID,
+							dateChoice : dateChoice
+						},
+						dataType: "html",
+								
+						success: function(msg) 
+						{
+							$('#table').html(msg); //Display the table in the div
+							$('#artists').show();
+							$('#top-tracks').hide();
+							$('#top-albums').hide();
+						},
+					});	
+				}
+			});
+		}
+		
+		
+    </script>
+</head>
+
+<body>
+	<div class='jumbotron text-center'>
+		<h1>Spotify Top Lists Generator</h1>
+	</div>
+	<div class='container' align='center';>
+		<div class='row'>
+			<div class='col-sm-4'>
+				<h3> Spotify Options </h3>
+				<a class="btn btn-primary btn-success" onclick="location.href='/login'"><span class="glyphicon glyphicon-log-in"></span> Log in to Spotify </a>
+
+				<a class="btn btn-primary btn-success" onclick="location.href='/logout'"><span class="glyphicon glyphicon-log-out"></span> Log out of Spotify </a>
+
+				<a class="btn btn-primary btn-success" onclick="location.reload()"><span class="glyphicon glyphicon-refresh"></span> Refresh page</a>
+			</div>
+			
+			<div class='col-sm-4'>
+				<h3> Get Options </h3>
+				<a id='tracks' class='btn btn-primary btn-success' onclick='getTopTracks()'><span class="glyphicon glyphicon-list"></span> Today's Top Tracks</a>
+
+				<a id='artists' class='btn btn-primary btn-success' onclick='getTopArtists()'><span class="glyphicon glyphicon-list"></span> Today's Top Artists</a>
+				
+				<a id='top-tracks' class='btn btn-primary btn-success' style='display: none;' onclick='getArtistTracks()'><span class="glyphicon glyphicon-ok-circle"></span> Get Artist's Top Tracks </a>
+
+				<a id='top-albums' class='btn btn-primary btn-success' style='display: none;' onclick='getArtistAlbums()'><span class="glyphicon glyphicon-ok-circle"></span> Get Artist's Top Albums </a>
+
+				<div id='showTrSelectBox'></div>
+				<div id='showArSelectBox'></div>
+			</div>
+			
+			<div class='col-sm-4'>
+				<h3> Delete Options </h3>
+				<a class='btn btn-primary btn-success' onclick='deleteTracks()'><span class="glyphicon glyphicon-remove-circle"></span> Delete Today's Stored Top Tracks Data</a>
+				<a class='btn btn-primary btn-success' onclick='deleteArtists()'><span class="glyphicon glyphicon-remove-circle"></span> Delete Today's Stored Top Artists Data</a>
+				
+			</div>
+		</div>
+	</div>
+	<div id='output'></div>
+	<div id='table'></div>
+	<div id='oauth'></div>
+	<div id='artistId'></div>
+	<div id='radio'></div>
+</body>
+</html>

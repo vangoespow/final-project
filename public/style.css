@@ -1,0 +1,45 @@
+h2 {
+		font-family: 'Georgia';
+}
+
+h3 {
+  text-align: center;
+}
+
+body {
+    background-color: lightblue;
+}
+
+table {
+	border: 1px solid black;
+    border-radius: 5px;
+    width: 60%;
+    margin: 0px auto;
+    float: none;
+}
+
+th {
+    height: 50px;
+	width: 10%;
+	text-align: center;
+}
+
+td {
+	width: 10%;
+	text-align: center;
+}
+
+.btn-primary {
+    background-color: #6AE340;
+    white-space: normal;
+    color: white;
+    padding: 8px;
+    margin-right: 8px;
+    margin-left: 8px;
+	margin-top: 8px;
+	margin-bottom: 8px;
+    border: none;
+    cursor: pointer;
+    width: 50%;
+}
+
